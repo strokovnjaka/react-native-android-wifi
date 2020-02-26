@@ -31,12 +31,14 @@ import android.widget.Toast;
 import java.util.List;
 import java.lang.Thread;
 import android.net.DhcpInfo;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 public class AndroidWifiModule extends ReactContextBaseJavaModule {
+  private static final String TAG = AndroidWifiModule.class.getName();
 
 	//WifiManager Instance
 	WifiManager wifi;
@@ -93,16 +95,16 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 
 	//Method to force wifi usage if the user needs to send requests via wifi
 	//if it does not have internet connection. Useful for IoT applications, when
-	//the app needs to communicate and send requests to a device that have no 
+	//the app needs to communicate and send requests to a device that have no
 	//internet connection via wifi.
 
 	//Receives a boolean to enable forceWifiUsage if true, and disable if false.
-	//Is important to enable only when communicating with the device via wifi 
+	//Is important to enable only when communicating with the device via wifi
 	//and remember to disable it when disconnecting from device.
 	@ReactMethod
 	public void forceWifiUsage(boolean useWifi) {
         boolean canWriteFlag = false;
-		
+
         if (useWifi) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 
@@ -229,18 +231,18 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 
     	// Quote ssid and password
 		conf.SSID = String.format("\"%s\"", ssid);
-	
+
     	WifiConfiguration tempConfig = this.IsExist(conf.SSID);
 		if (tempConfig != null) {
 			wifi.removeNetwork(tempConfig.networkId);
 		}
 
 		String capabilities = result.capabilities;
-		
+
     	// appropriate ciper is need to set according to security type used
 		if (capabilities.contains("WPA") || capabilities.contains("WPA2") || capabilities.contains("WPA/WPA2 PSK")) {
 
-			// This is needed for WPA/WPA2 
+			// This is needed for WPA/WPA2
 			// Reference - https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiConfiguration.java#149
 			conf.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
 
@@ -256,7 +258,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 			conf.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
 			conf.status = WifiConfiguration.Status.ENABLED;
 			conf.preSharedKey = String.format("\"%s\"", password);
-      
+
 		} else if (capabilities.contains("WEP")) {
 			// This is needed for WEP
 			// Reference - https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiConfiguration.java#149
@@ -310,14 +312,14 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 
 		return true;
 	}
-	
+
 	//add configuration of hidden network and return it's networkId
 	public int setWifiConfig(String ssid, String sharedKey) {
 		WifiConfiguration conf = new WifiConfiguration();
 
 		conf.SSID = "\"" + ssid + "\"";
 		conf.preSharedKey = "\"" + sharedKey + "\"";
-	
+
 		conf.hiddenSSID = true;
 		conf.status = WifiConfiguration.Status.ENABLED;
 		conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
@@ -327,7 +329,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 		conf.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
 		conf.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
 		conf.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
-	
+
 		return wifi.addNetwork(conf);
 	}
 
@@ -362,7 +364,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 			networkAdded.invoke(false);
 			return;
 		}
-		
+
 		// disconnect current network
 		boolean disconnect = wifi.disconnect();
 		if (!disconnect) {
@@ -376,7 +378,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 			networkAdded.invoke(false);
 			return;
 		}
-	
+
 		// reconnect to new network
 		boolean reconnect = wifi.reconnect();
 		if (!reconnect) {
@@ -416,7 +418,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 
 		String bssid = info.getBSSID();
 
-		callback.invoke(bssid.toUpperCase());
+		callback.invoke(bssid);
 	}
 
 	//This method will return current wifi signal strength
@@ -460,6 +462,55 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 			}
 	    }
 		callback.invoke(false);
+	}
+
+	//This method will retrieve all configured wifi networks
+	@ReactMethod
+	public void getConfiguredWifiNetworks(final Callback callback) {
+    List<WifiConfiguration> mWifiConfigList = wifi.getConfiguredNetworks();
+    if (mWifiConfigList == null) {
+    	callback.invoke();
+    	return;
+    }
+
+		JSONArray configuredArray = new JSONArray();
+    for (WifiConfiguration wifiConfig : mWifiConfigList) {
+			JSONObject configuredObject = new JSONObject();
+			try {
+				Log.d(TAG, "getConfiguredWifiNetworks: " + wifiConfig);
+				configuredObject.put("SSID", wifiConfig.SSID.replaceAll("^\"|\"$", ""));
+			} catch (JSONException e) {
+      	callback.invoke(e.getMessage());
+				return;
+			}
+			configuredArray.put(configuredObject);
+    }
+		callback.invoke(configuredArray.toString());
+	}
+
+	//This method will remove all configured wifi networks
+	@ReactMethod
+	public void removeAllWifiNetworks(final Callback callback) {
+    List<WifiConfiguration> mWifiConfigList = wifi.getConfiguredNetworks();
+    if (mWifiConfigList == null) {
+    	callback.invoke();
+    	return;
+    }
+
+		JSONArray removedArray = new JSONArray();
+    for (WifiConfiguration wifiConfig : mWifiConfigList) {
+			wifi.removeNetwork(wifiConfig.networkId);
+			JSONObject removedObject = new JSONObject();
+			try {
+				removedObject.put("SSID", wifiConfig.SSID.replaceAll("^\"|\"$", ""));
+			} catch (JSONException e) {
+      	callback.invoke(e.getMessage());
+				return;
+			}
+			removedArray.put(removedObject);
+    }
+		wifi.saveConfiguration();
+		callback.invoke(removedArray.toString());
 	}
 
 	@ReactMethod
@@ -522,7 +573,7 @@ public class AndroidWifiModule extends ReactContextBaseJavaModule {
 
 		// This method call when number of wifi connections changed
       	public void onReceive(Context c, Intent intent) {
-			
+
 			c.unregisterReceiver(this);
 
 			try {
